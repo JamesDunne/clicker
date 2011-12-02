@@ -31,6 +31,7 @@ namespace Clicker
                 pinghi[b, 0] = unchecked((short)(pinghiraw[i + 0] | (pinghiraw[i + 1] << 8)));
                 pinghi[b, 1] = unchecked((short)(pinghiraw[i + 2] | (pinghiraw[i + 3] << 8)));
             }
+            int pinghiLength = pinghi.GetUpperBound(0) + 1;
 
             byte[] pingloraw = File.ReadAllBytes("pinglo48k16b.raw");
             short[,] pinglo = new short[pingloraw.Length / 4, 2];
@@ -39,6 +40,7 @@ namespace Clicker
                 pinglo[b, 0] = unchecked((short)(pingloraw[i + 0] | (pingloraw[i + 1] << 8)));
                 pinglo[b, 1] = unchecked((short)(pingloraw[i + 2] | (pingloraw[i + 3] << 8)));
             }
+            int pingloLength = pinglo.GetUpperBound(0) + 1;
 
             // Load the MIDI sequence:
             Sequence seq = new Sequence(args[0]);
@@ -79,7 +81,7 @@ namespace Clicker
             usecPerTick = (double)currentTempo.MicrosecondsPerQuarter / (double)ticksPerQuarter;
             beatTicks = (ticksPerQuarter * 4) / currentTimeSignature.Denominator;
 
-            long sample = 0L;
+            double sample = 0d;
             int lastTick = 0;
 
             using (var wav = File.Open("click.wav", FileMode.Create, FileAccess.Write, FileShare.Read))
@@ -111,40 +113,43 @@ namespace Clicker
                 bw.Write(data.sChunkID.ToCharArray());
                 bw.Write(data.dwChunkSize);
 
-                long lastSample = sample;
+                double lastSample = sample;
 
                 foreach (var me in timeChanges)
                 {
+                    double delta = (usecPerTick * (double)samplesPerSec * (double)beatTicks) / 1000000d;
                     for (int tick = lastTick, note = 0; tick < me.ev.AbsoluteTicks; tick += beatTicks, ++note)
                     {
                         int beat = note % currentTimeSignature.Numerator;
 
-                        long delta = samplesPerTick(tick - lastTick);
-                        long curr = sample + delta;
-                        Console.WriteLine("{0,9}: {1}", curr, beat);
+                        sample += delta;
+                        Console.WriteLine("{0,9}: {1}", (long)sample, beat);
 
                         // Copy in the click:
                         short[,] click = (beat == 0) ? pinglo : pinghi;
+                        int clickLength = (beat == 0) ? pingloLength : pinghiLength;
 
-                        int d = (int)samplesPerTick(beatTicks);
+                        int d = (int)((long)sample - (long)lastSample);
                         Debug.Assert(d > 0);
-                        for (int x = 0; x < Math.Min(click.GetUpperBound(0), d); ++x)
+                        for (int x = 0; x < Math.Min(clickLength, d); ++x)
                         {
                             // STEREO
                             bw.Write(click[x, 0]);
                             bw.Write(click[x, 1]);
                         }
-                        for (int x = click.GetUpperBound(0); x < d; ++x)
+                        for (int x = clickLength; x < d; ++x)
                         {
                             // STEREO
                             bw.Write((short)0);
                             bw.Write((short)0);
                         }
 
-                        lastSample = curr;
+                        lastSample = sample;
+
+                        Debug.Assert(Math.Abs((long)sample - wav.Length) <= 2);
                     }
 
-                    sample += samplesPerTick(me.ev.AbsoluteTicks - lastTick);
+                    //sample += samplesPerTick(me.ev.AbsoluteTicks - lastTick);
                     lastTick = me.ev.AbsoluteTicks;
 
                     if (me.mm == null) continue;
@@ -163,9 +168,14 @@ namespace Clicker
                     }
                 }
 
+                // Write RIFF file size:
                 bw.Seek(4, SeekOrigin.Begin);
                 uint filesize = (uint)wav.Length;
                 bw.Write(filesize - 8);
+
+                // Write "data" chunk size:
+                bw.Seek(0x28, SeekOrigin.Begin);
+                bw.Write(filesize - 0x2C);
             }
         }
 
@@ -212,16 +222,6 @@ namespace Clicker
             public MetaMessage MetaMessage { get { return msg; } }
 
             public int MicrosecondsPerQuarter { get { return (msg[0] << 16) | (msg[1] << 8) | msg[2]; } }
-        }
-
-        private struct AudioSample
-        {
-            private readonly int sample;
-
-            public AudioSample(int sample)
-            {
-                this.sample = sample;
-            }
         }
 
         private sealed class WaveHeader
