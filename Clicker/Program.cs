@@ -33,6 +33,15 @@ namespace Clicker
                 orderby ev.AbsoluteTicks ascending
                 select new { ev, mm };
 
+            var lastEvent = (
+                from tr in seq
+                from ev in tr.Iterator()
+                select new { ev, mm = (MetaMessage)null }
+            ).Last();
+
+            // Add the last event as a dummy time change event:
+            timeChanges = timeChanges.Concat(Enumerable.Repeat(lastEvent, 1));
+
             // Ticks per quarter note:
             Console.WriteLine(seq.Division);
 
@@ -55,14 +64,16 @@ namespace Clicker
 
             foreach (var me in timeChanges)
             {
-                for (int tick = lastTick + beatTicks; tick <= me.ev.AbsoluteTicks; tick += beatTicks)
+                for (int tick = lastTick, note = 0; tick < me.ev.AbsoluteTicks; tick += beatTicks, ++note)
                 {
                     long sample = lastSample + samplesPerTick(tick - lastTick);
-                    Console.WriteLine(sample);
+                    Console.WriteLine("{0,9}: {1}", sample, note % currentTimeSignature.Numerator);
                 }
 
                 lastSample += samplesPerTick(me.ev.AbsoluteTicks - lastTick);
                 lastTick = me.ev.AbsoluteTicks;
+
+                if (me.mm == null) continue;
 
                 if (me.mm.MetaType == MetaType.Tempo)
                 {
