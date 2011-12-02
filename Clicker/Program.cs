@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Sanford.Multimedia.Midi;
 using System.IO;
+using System.Diagnostics;
 
 namespace Clicker
 {
@@ -22,16 +23,22 @@ namespace Clicker
 
         private void Run(string[] args)
         {
-            // Load our clicks:
+            // Load our clicks (stereo 16-bit clips):
             byte[] pinghiraw = File.ReadAllBytes("pinghi48k16b.raw");
-            short[] pinghi = new short[pinghiraw.Length / 2];
-            for (int i = 0, b = 0; i < pinghiraw.Length - 2; i += 2, ++b)
-                pinghi[b] = unchecked((short)(pinghiraw[i + 0] | (pinghiraw[i + 1] << 8)));
+            short[,] pinghi = new short[pinghiraw.Length / 4, 2];
+            for (int i = 0, b = 0; i < pinghiraw.Length - 4; i += 4, ++b)
+            {
+                pinghi[b, 0] = unchecked((short)(pinghiraw[i + 0] | (pinghiraw[i + 1] << 8)));
+                pinghi[b, 1] = unchecked((short)(pinghiraw[i + 2] | (pinghiraw[i + 3] << 8)));
+            }
 
             byte[] pingloraw = File.ReadAllBytes("pinglo48k16b.raw");
-            short[] pinglo = new short[pingloraw.Length / 2];
-            for (int i = 0, b = 0; i < pingloraw.Length - 2; i += 2, ++b)
-                pinglo[b] = unchecked((short)(pingloraw[i + 0] | (pingloraw[i + 1] << 8)));
+            short[,] pinglo = new short[pingloraw.Length / 4, 2];
+            for (int i = 0, b = 0; i < pingloraw.Length - 4; i += 4, ++b)
+            {
+                pinglo[b, 0] = unchecked((short)(pingloraw[i + 0] | (pingloraw[i + 1] << 8)));
+                pinglo[b, 1] = unchecked((short)(pingloraw[i + 2] | (pingloraw[i + 3] << 8)));
+            }
 
             // Load the MIDI sequence:
             Sequence seq = new Sequence(args[0]);
@@ -104,10 +111,10 @@ namespace Clicker
                 bw.Write(data.sChunkID.ToCharArray());
                 bw.Write(data.dwChunkSize);
 
+                long lastSample = sample;
+
                 foreach (var me in timeChanges)
                 {
-                    long lastSample = sample;
-
                     for (int tick = lastTick, note = 0; tick < me.ev.AbsoluteTicks; tick += beatTicks, ++note)
                     {
                         int beat = note % currentTimeSignature.Numerator;
@@ -117,13 +124,22 @@ namespace Clicker
                         Console.WriteLine("{0,9}: {1}", curr, beat);
 
                         // Copy in the click:
-                        short[] click = (beat == 0) ? pinglo : pinghi;
+                        short[,] click = (beat == 0) ? pinglo : pinghi;
 
-                        int d = (int)(curr - lastSample);
-                        for (int x = 0; x < Math.Min(click.Length, d); ++x)
-                            bw.Write(click[x]);
-                        for (int x = click.Length; x < d; ++x)
+                        int d = (int)samplesPerTick(beatTicks);
+                        Debug.Assert(d > 0);
+                        for (int x = 0; x < Math.Min(click.GetUpperBound(0), d); ++x)
+                        {
+                            // STEREO
+                            bw.Write(click[x, 0]);
+                            bw.Write(click[x, 1]);
+                        }
+                        for (int x = click.GetUpperBound(0); x < d; ++x)
+                        {
+                            // STEREO
                             bw.Write((short)0);
+                            bw.Write((short)0);
+                        }
 
                         lastSample = curr;
                     }
