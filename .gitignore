@@ -1,0 +1,6 @@
+bin/
+obj/
+*.suo
+*.user
+UpgradeLog*.XML
+_UpgradeReport_Files/

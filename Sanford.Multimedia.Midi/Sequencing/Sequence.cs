@@ -161,17 +161,18 @@ namespace Sanford.Multimedia.Midi
             FileStream stream = new FileStream(fileName, FileMode.Open,
                 FileAccess.Read, FileShare.Read);
 
-            using(stream)
+            using (stream)
+            using (var buffer = new BufferedStream(stream, 65536))
             {
                 MidiFileProperties newProperties = new MidiFileProperties();
                 TrackReader reader = new TrackReader();
                 List<Track> newTracks = new List<Track>();
 
-                newProperties.Read(stream);
+                newProperties.Read(buffer);
 
                 for(int i = 0; i < newProperties.TrackCount; i++)
                 {
-                    reader.Read(stream);
+                    reader.Read(buffer);
                     newTracks.Add(reader.Track);
                 }
 

@@ -198,7 +198,7 @@ namespace Sanford.Multimedia.Midi
 
             #endregion
 
-#if(DEBUG)
+#if DEBUG
             int oldCount = Count;
 #endif
 
@@ -268,7 +268,9 @@ namespace Sanford.Multimedia.Midi
 
             #region Ensure
 
+#if DEBUG
             Debug.Assert(count == oldCount + trk.Count - 1);
+#endif
 
             #endregion
 
