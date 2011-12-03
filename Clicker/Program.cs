@@ -99,8 +99,11 @@ namespace Clicker
             }
             int pingloLength = pinglo.GetUpperBound(0) + 1;
 
+            FileInfo midiFile = new FileInfo(args[0]);
+            if (!midiFile.Exists) return;
+
             // Load the MIDI sequence:
-            Sequence seq = new Sequence(args[0]);
+            Sequence seq = new Sequence(midiFile.FullName);
 
             // Grab meter and tempo changes from any track:
             var timeChanges =
@@ -138,7 +141,7 @@ namespace Clicker
 
             double sample = 0d;
 
-            using (var wav = File.Open("click.wav", FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (var wav = File.Open(Path.Combine(midiFile.Directory.FullName, midiFile.Name + ".click.wav"), FileMode.Create, FileAccess.Write, FileShare.Read))
             using (var bs = new BufferedStream(wav))
             using (var bw = new BinaryWriter(bs))
             {
