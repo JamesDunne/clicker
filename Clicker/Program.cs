@@ -58,11 +58,9 @@ namespace Clicker
             var lastEvent = (
                 from tr in seq
                 from ev in tr.Iterator()
-                select new { ev, mm = (MetaMessage)null }
+                orderby ev.AbsoluteTicks ascending
+                select ev
             ).Last();
-
-            // Add the last event as a dummy time change event:
-            timeChanges = timeChanges.Concat(Enumerable.Repeat(lastEvent, 1));
 
             // Ticks per quarter note:
             Console.WriteLine(seq.Division);
@@ -82,7 +80,6 @@ namespace Clicker
             beatTicks = (ticksPerQuarter * 4) / currentTimeSignature.Denominator;
 
             double sample = 0d;
-            int lastTick = 0;
 
             using (var wav = File.Open("click.wav", FileMode.Create, FileAccess.Write, FileShare.Read))
             using (var bs = new BufferedStream(wav))
@@ -113,11 +110,104 @@ namespace Clicker
                 bw.Write(data.sChunkID.ToCharArray());
                 bw.Write(data.dwChunkSize);
 
+#if true
+                double samplesPerUsec = (double)samplesPerSec / 1000000d;
+                double samplesPerTick = usecPerTick * samplesPerUsec;
                 double lastSample = sample;
+                int nextBeatTick = 0;
+                int note = 0;
+                int tick = 0;
+
+                using (var en = timeChanges.GetEnumerator())
+                {
+                    MidiEvent nextEvent;
+                    bool haveKeyOrTempoChange = en.MoveNext();
+                    var me = en.Current;
+                    nextEvent = me.ev;
+
+                    while (tick < lastEvent.AbsoluteTicks)
+                    {
+                        for (; tick < nextEvent.AbsoluteTicks; ++tick)
+                        {
+                            sample += samplesPerTick;
+
+                            // Start a click at this tick:
+                            if (tick == nextBeatTick)
+                            {
+                                int beat = note;
+                                Console.WriteLine("Click at tick {0,7}, sample {1,12:#######0.00}, beat {2,2}", tick, sample, beat);
+                                
+                                // Copy in a click:
+
+                                // Silence until start of this click:
+                                long x = (long)sample - (long)lastSample;
+                                for (; x > 0; --x)
+                                {
+                                    // STEREO
+                                    bw.Write((short)0);
+                                    bw.Write((short)0);
+                                }
+
+                                // Choose the click sound based on the beat:
+                                short[,] click = (beat == 0) ? pinglo : pinghi;
+                                int clickLength = (beat == 0) ? pingloLength : pinghiLength;
+
+                                long delta = x;
+                                for (x = -x; x < clickLength; ++x)
+                                {
+                                    // STEREO
+                                    bw.Write(click[x, 0]);
+                                    bw.Write(click[x, 1]);
+                                }
+
+                                lastSample = sample + clickLength + delta;
+                                Debug.Assert(Math.Abs((long)lastSample - wav.Length) <= 1);
+
+                                // Set next beat tick:
+                                nextBeatTick = tick + beatTicks;
+                                note = (note + 1) % currentTimeSignature.Numerator;
+                            }
+                        }
+
+                        if (haveKeyOrTempoChange)
+                        {
+                            if (me.mm.MetaType == MetaType.Tempo)
+                            {
+                                currentTempo = new TempoMessage(me.mm);
+                                usecPerTick = (double)currentTempo.MicrosecondsPerQuarter / (double)ticksPerQuarter;
+                                samplesPerTick = usecPerTick * samplesPerUsec;
+                                Console.WriteLine("{0,-13} {1,7}: {2,7} us/b = {3,6:##0.00} bpm", me.mm.MetaType, me.ev.AbsoluteTicks, currentTempo.MicrosecondsPerQuarter, 500000d / currentTempo.MicrosecondsPerQuarter * 120);
+                            }
+                            else
+                            {
+                                currentTimeSignature = new TimeSignatureMessage(me.mm);
+                                beatTicks = (ticksPerQuarter * 4) / currentTimeSignature.Denominator;
+                                // NOTE: Assume key change is on a beat tick; force a reset of beats anyway.
+                                nextBeatTick = tick;
+                                note = 0;
+                                Console.WriteLine("{0,-13} {1,7}: {2}/{3} = {4} ticks/beat", me.mm.MetaType, me.ev.AbsoluteTicks, currentTimeSignature.Numerator, currentTimeSignature.Denominator, beatTicks);
+                            }
+
+                            haveKeyOrTempoChange = en.MoveNext();
+                            if (haveKeyOrTempoChange)
+                            {
+                                me = en.Current;
+                                nextEvent = me.ev;
+                            }
+                            else
+                            {
+                                me = null;
+                                nextEvent = lastEvent;
+                            }
+                        }
+                    }
+                }
+#else
+                int lastTick = 0;
 
                 foreach (var me in timeChanges)
                 {
-                    double delta = (usecPerTick * (double)samplesPerSec * (double)beatTicks) / 1000000d;
+                    double delta = usecPerTick * samplesPerUsec * (double)beatTicks;
                     for (int tick = lastTick, note = 0; tick < me.ev.AbsoluteTicks; tick += beatTicks, ++note)
                     {
                         int beat = note % currentTimeSignature.Numerator;
@@ -167,6 +257,7 @@ namespace Clicker
                         Console.WriteLine("{0,-13} {1,7}: {2}/{3} = {4} ticks/beat", me.mm.MetaType, me.ev.AbsoluteTicks, currentTimeSignature.Numerator, currentTimeSignature.Denominator, beatTicks);
                     }
                 }
+#endif
 
                 // Write RIFF file size:
                 bw.Seek(4, SeekOrigin.Begin);
