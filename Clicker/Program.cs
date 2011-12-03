@@ -81,12 +81,7 @@ namespace Clicker
         // TODO: double the numerator too?
         private void calcBeatTicks()
         {
-            int clickDenominator;
-            if (isDivided())
-                clickDenominator = (1 << clickOnDivision);
-            else
-                clickDenominator = currentTimeSignature.Denominator;
-
+            int clickDenominator = getDenominator();
             beatTicks = (ticksPerQuarter * 4) / clickDenominator;
         }
 
@@ -98,6 +93,16 @@ namespace Clicker
             else
                 num = currentTimeSignature.Numerator;
             return num;
+        }
+
+        private int getDenominator()
+        {
+            int clickDenominator;
+            if (isDivided())
+                clickDenominator = (1 << clickOnDivision);
+            else
+                clickDenominator = currentTimeSignature.Denominator;
+            return clickDenominator;
         }
 
         private void calcUsecPerTick()
@@ -170,9 +175,6 @@ namespace Clicker
                 select ev
             ).Last();
 
-            // Ticks per quarter note:
-            Console.WriteLine(seq.Division);
-
             // Create a default tempo of 120 bpm (500,000 us/b):
             var tcb = new TempoChangeBuilder() { Tempo = 500000 };
             tcb.Build();
@@ -189,7 +191,22 @@ namespace Clicker
 
             double sample = 0d;
 
-            using (var wav = File.Open(Path.Combine(midiFile.Directory.FullName, midiFile.Name + ".click.wav"), FileMode.Create, FileAccess.Write, FileShare.Read))
+            string outWaveFile = Path.Combine(midiFile.Directory.FullName, midiFile.Name + ".click.wav");
+            Console.WriteLine("Writing click track to '{0}'", outWaveFile);
+
+            var format = new WaveFormatChunk();
+            format.dwSamplesPerSec = samplesPerSec;
+            format.wChannels = 2;
+            format.wBitsPerSample = 16;
+            Console.WriteLine(
+                "Sample rate = {0,6} Hz; Channels = {1,1}; BitsPerSample = {2,2}",
+                format.dwSamplesPerSec,
+                format.wChannels,
+                format.wBitsPerSample
+            );
+
+            // Open the WAVE for output:
+            using (var wav = File.Open(outWaveFile, FileMode.Create, FileAccess.Write, FileShare.Read))
             using (var bs = new BufferedStream(wav))
             using (var bw = new BinaryWriter(bs))
             {
@@ -199,11 +216,6 @@ namespace Clicker
                 bw.Write(header.sGroupID.ToCharArray());
                 bw.Write(header.dwFileLength);
                 bw.Write(header.sRiffType.ToCharArray());
-
-                var format = new WaveFormatChunk();
-                format.dwSamplesPerSec = samplesPerSec;
-                format.wChannels = 2;
-                format.wBitsPerSample = 16;
 
                 // Write the format chunk
                 bw.Write(format.sChunkID.ToCharArray());
@@ -241,7 +253,7 @@ namespace Clicker
                             if (tick == nextBeatTick)
                             {
                                 int beat = note;
-                                //Console.WriteLine("Click at tick {0,7}, sample {1,12:#######0.00}, beat {2,2}", tick, sample, beat);
+                                //Debug.WriteLine("Click at tick {0,7}, sample {1,12:#######0.00}, beat {2,2}", tick, sample, beat);
 
                                 // Copy in a click:
                                 double vol = doAttenuateBeat(beat) ? 0.5d : 1d;
@@ -283,7 +295,12 @@ namespace Clicker
                             {
                                 currentTempo = new TempoMessage(me.mm);
                                 calcUsecPerTick();
-                                Console.WriteLine("{0,-13} {1,7}: {2,7} us/b = {3,6:##0.00} bpm", me.mm.MetaType, me.ev.AbsoluteTicks, currentTempo.MicrosecondsPerQuarter, 500000d / currentTempo.MicrosecondsPerQuarter * 120);
+                                Console.WriteLine(
+                                    "{0,9}: tempo {1,8:###0.000} bpm = {2,9:#,###,##0} usec/qtr",
+                                    me.ev.AbsoluteTicks,
+                                    500000d / currentTempo.MicrosecondsPerQuarter * 120,
+                                    currentTempo.MicrosecondsPerQuarter
+                                );
                             }
                             else
                             {
@@ -292,7 +309,12 @@ namespace Clicker
                                 // NOTE: Assume key change is on a beat tick; force a reset of beats anyway.
                                 nextBeatTick = tick;
                                 note = 0;
-                                Console.WriteLine("{0,-13} {1,7}: {2}/{3} = {4} ticks/beat", me.mm.MetaType, me.ev.AbsoluteTicks, currentTimeSignature.Numerator, currentTimeSignature.Denominator, beatTicks);
+                                Console.WriteLine(
+                                    "{0,9}: meter {1,2}/{2,-2} treating as {3,2}/{4,-2}",
+                                    me.ev.AbsoluteTicks,
+                                    currentTimeSignature.Numerator, currentTimeSignature.Denominator,
+                                    getNumerator(), getDenominator()
+                                );
                             }
 
                             haveKeyOrTempoChange = en.MoveNext();
@@ -319,6 +341,14 @@ namespace Clicker
                 bw.Seek(0x28, SeekOrigin.Begin);
                 bw.Write(filesize - 0x2C);
             }
+
+            Console.WriteLine("Click track written to '{0}'", outWaveFile);
+            Console.WriteLine(
+                "Sample rate = {0,6} Hz; Channels = {1,1}; BitsPerSample = {2,2}",
+                format.dwSamplesPerSec,
+                format.wChannels,
+                format.wBitsPerSample
+            );
         }
 
         private byte[] getAllBytes(Stream stream)
