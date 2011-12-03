@@ -306,9 +306,11 @@ namespace Clicker
                             {
                                 currentTimeSignature = new TimeSignatureMessage(me.mm);
                                 calcBeatTicks();
+#if false
                                 // NOTE: Assume key change is on a beat tick; force a reset of beats anyway.
-                                nextBeatTick = tick;
-                                note = 0;
+                                //nextBeatTick = tick;
+                                //note = 0;
+#endif
                                 Console.WriteLine(
                                     "{0,9}: meter {1,2}/{2,-2} treating as {3,2}/{4,-2}",
                                     me.ev.AbsoluteTicks,
