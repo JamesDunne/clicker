@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using Sanford.Multimedia.Midi;
-using System.IO;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using Clicker.Multimedia.Midi;
 
 namespace Clicker
 {
@@ -13,16 +11,10 @@ namespace Clicker
         static void Main(string[] args)
         {
             new Program().Run(args);
-            Console.WriteLine("Done!");
+            Debug.WriteLine("Done!");
         }
 
         const int samplesPerSec = 48000;    // samples/sec
-
-        const bool forceClickDivision = true;
-        const bool attenuateDividedBeats = true;
-        const int clickOnDivision = 3;      // force click on 8th notes at minimum
-                                            // 1 / (1 << value) == (1 / (2^value)) == 1/8th (when value is 3)
-
         const double samplesPerUsec = (double)samplesPerSec / 1000000d;
 
         int ticksPerQuarter;
@@ -31,6 +23,25 @@ namespace Clicker
         TimeSignatureMessage currentTimeSignature;
         TempoMessage currentTempo;
         double samplesPerTick;
+
+        /// <summary>
+        /// Controls whether or not dividing the meter is acceptable for the metronome
+        /// </summary>
+        bool forceClickDivision = true;
+        /// <summary>
+        /// Controls whether generated beats are attenuated if the meter is divided
+        /// </summary>
+        bool attenuateDividedBeats = true;
+        /// <summary>
+        /// Controls whether meter-proper off-beats are attenuated if they are smaller than the dividing meter threshold
+        /// </summary>
+        bool attenuateProperOffBeats = true;
+
+        /// <summary>
+        /// (1 &lt;&lt; value) is the minimum desired metronome meter if forceClickDivision is true.
+        /// </summary>
+        int clickOnDivision = 3;    // force click on 1/8th notes at minimum
+                                    // 1 / (1 << value) == (1 / (2^value)) == 1/8th (when value is 3)
 
         private bool isDivided()
         {
@@ -42,11 +53,28 @@ namespace Clicker
             return (clickOnDivision - currentTimeSignature.DenominatorPower);
         }
 
+        private int reverseDivisorPower()
+        {
+            return (currentTimeSignature.DenominatorPower - clickOnDivision);
+        }
+
         private bool doAttenuateBeat(int beat)
         {
-            if (!isDivided()) return false;
+            int meterBeat;
+            int divisorpwr;
+
+            if (!isDivided())
+            {
+                if (!attenuateProperOffBeats) return false;
+                divisorpwr = reverseDivisorPower();
+            }
+            else
+            {
+                divisorpwr = divisorPower();
+            }
+
             // Chop off the LSBs that may have been introduced for the multiplier:
-            int meterBeat = (beat >> divisorPower()) << divisorPower();
+            meterBeat = (beat >> divisorpwr) << divisorpwr;
             return beat != meterBeat;
         }
 
@@ -78,10 +106,32 @@ namespace Clicker
             samplesPerTick = usecPerTick * samplesPerUsec;
         }
 
+        /// <summary>
+        /// Main program.
+        /// </summary>
+        /// <param name="args"></param>
         private void Run(string[] args)
         {
+            // TODO: process arguments to control parameters
+            if (args.Length < 1)
+            {
+                Console.WriteLine("Expected path to MIDI sequence.");
+                return;
+            }
+
+            FileInfo midiFile = new FileInfo(args[0]);
+            if (!midiFile.Exists) return;
+
+            // Load the MIDI sequence:
+            Sequence seq = new Sequence(midiFile.FullName);
+
             // Load our clicks (stereo 16-bit clips):
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+#if true
+            byte[] pinghiraw = getAllBytes(asm.GetManifestResourceStream("Clicker.pinghi48k16b.raw"));
+#else
             byte[] pinghiraw = File.ReadAllBytes("pinghi48k16b.raw");
+#endif
             short[,] pinghi = new short[pinghiraw.Length / 4, 2];
             for (int i = 0, b = 0; i < pinghiraw.Length - 4; i += 4, ++b)
             {
@@ -90,7 +140,11 @@ namespace Clicker
             }
             int pinghiLength = pinghi.GetUpperBound(0) + 1;
 
+#if true
+            byte[] pingloraw = getAllBytes(asm.GetManifestResourceStream("Clicker.pinglo48k16b.raw"));
+#else
             byte[] pingloraw = File.ReadAllBytes("pinglo48k16b.raw");
+#endif
             short[,] pinglo = new short[pingloraw.Length / 4, 2];
             for (int i = 0, b = 0; i < pingloraw.Length - 4; i += 4, ++b)
             {
@@ -98,12 +152,6 @@ namespace Clicker
                 pinglo[b, 1] = unchecked((short)(pingloraw[i + 2] | (pingloraw[i + 3] << 8)));
             }
             int pingloLength = pinglo.GetUpperBound(0) + 1;
-
-            FileInfo midiFile = new FileInfo(args[0]);
-            if (!midiFile.Exists) return;
-
-            // Load the MIDI sequence:
-            Sequence seq = new Sequence(midiFile.FullName);
 
             // Grab meter and tempo changes from any track:
             var timeChanges =
@@ -270,6 +318,17 @@ namespace Clicker
                 // Write "data" chunk size:
                 bw.Seek(0x28, SeekOrigin.Begin);
                 bw.Write(filesize - 0x2C);
+            }
+        }
+
+        private byte[] getAllBytes(Stream stream)
+        {
+            using (stream)
+            {
+                byte[] all = new byte[stream.Length];
+                int nr = stream.Read(all, 0, (int)stream.Length);
+                Debug.Assert(nr == (int)stream.Length);
+                return all;
             }
         }
 

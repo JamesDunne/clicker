@@ -10,12 +10,12 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Clicker</RootNamespace>
     <AssemblyName>Clicker</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <TargetFrameworkProfile>Client</TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
-    <PlatformTarget>x86</PlatformTarget>
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
@@ -25,7 +25,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
-    <PlatformTarget>x86</PlatformTarget>
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
@@ -33,39 +33,84 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <DebugType>full</DebugType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <CodeAnalysisLogFile>bin\Debug\Clicker.exe.CodeAnalysisLog.xml</CodeAnalysisLogFile>
+    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
+    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
+    <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
+    <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <CodeAnalysisLogFile>bin\Release\Clicker.exe.CodeAnalysisLog.xml</CodeAnalysisLogFile>
+    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
+    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
+    <CodeAnalysisIgnoreBuiltInRuleSets>true</CodeAnalysisIgnoreBuiltInRuleSets>
+    <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
+    <CodeAnalysisIgnoreBuiltInRules>true</CodeAnalysisIgnoreBuiltInRules>
+  </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Sanford.Collections">
-      <HintPath>..\Sanford.Collections.dll</HintPath>
-    </Reference>
-    <Reference Include="Sanford.Multimedia">
-      <HintPath>..\Sanford.Multimedia.dll</HintPath>
-    </Reference>
-    <Reference Include="Sanford.Multimedia.Timers">
-      <HintPath>..\Sanford.Multimedia.Timers.dll</HintPath>
-    </Reference>
-    <Reference Include="Sanford.Threading">
-      <HintPath>..\Sanford.Threading.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Midi\Clocks\IClock.cs" />
+    <Compile Include="Midi\Clocks\PpqnClock.cs" />
+    <Compile Include="Midi\Key.cs" />
+    <Compile Include="Midi\Messages\ChannelMessage.cs" />
+    <Compile Include="Midi\Messages\EventArgs\ChannelMessageEventArgs.cs" />
+    <Compile Include="Midi\Messages\EventArgs\InvalidShortMessageEventArgs.cs" />
+    <Compile Include="Midi\Messages\EventArgs\InvalidSysExMessageEventArgs.cs" />
+    <Compile Include="Midi\Messages\EventArgs\MetaMessageEventArgs.cs" />
+    <Compile Include="Midi\Messages\EventArgs\SysCommonMessageEventArgs.cs" />
+    <Compile Include="Midi\Messages\EventArgs\SysExMessageEventArgs.cs" />
+    <Compile Include="Midi\Messages\EventArgs\SysRealtimeMessageEventArgs.cs" />
+    <Compile Include="Midi\Messages\IMidiMessage.cs" />
+    <Compile Include="Midi\Messages\Message Builders\ChannelMessageBuilder.cs" />
+    <Compile Include="Midi\Messages\Message Builders\IMessageBuilder.cs" />
+    <Compile Include="Midi\Messages\Message Builders\KeySignatureBuilder.cs" />
+    <Compile Include="Midi\Messages\Message Builders\MetaTextBuilder.cs" />
+    <Compile Include="Midi\Messages\Message Builders\SongPositionPointerBuilder.cs" />
+    <Compile Include="Midi\Messages\Message Builders\SysCommonMessageBuilder.cs" />
+    <Compile Include="Midi\Messages\Message Builders\TempoChangeBuilder.cs" />
+    <Compile Include="Midi\Messages\Message Builders\TimeSignatureBuilder.cs" />
+    <Compile Include="Midi\Messages\MessageDispatcher.cs" />
+    <Compile Include="Midi\Messages\MetaMessage.cs" />
+    <Compile Include="Midi\Messages\ShortMessage.cs" />
+    <Compile Include="Midi\Messages\SysCommonMessage.cs" />
+    <Compile Include="Midi\Messages\SysExMessage.cs" />
+    <Compile Include="Midi\Messages\SysRealtimeMessage.cs" />
+    <Compile Include="Midi\Sequencing\MidiEvent.cs" />
+    <Compile Include="Midi\Sequencing\MidiFileProperties.cs" />
+    <Compile Include="Midi\Sequencing\Sequence.cs" />
+    <Compile Include="Midi\Sequencing\Track Classes\Track.cs" />
+    <Compile Include="Midi\Sequencing\Track Classes\Track.Iterators.cs" />
+    <Compile Include="Midi\Sequencing\Track Classes\TrackReader.cs" />
+    <Compile Include="Midi\Sequencing\Track Classes\TrackWriter.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Sanford.Multimedia.Midi\Sanford.Multimedia.Midi.csproj">
-      <Project>{4269C72A-8D3A-4737-8F89-72EAA33EA9E1}</Project>
-      <Name>Sanford.Multimedia.Midi</Name>
-    </ProjectReference>
+    <EmbeddedResource Include="pinghi48k16b.raw" />
+    <EmbeddedResource Include="pinglo48k16b.raw" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="pinghi48k16b.raw">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="pinglo48k16b.raw">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    <None Include="app.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
