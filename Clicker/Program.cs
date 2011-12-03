@@ -186,8 +186,6 @@ namespace Clicker
                     {
                         for (; tick < nextEvent.AbsoluteTicks; ++tick)
                         {
-                            sample += samplesPerTick;
-
                             // Start a click at this tick:
                             if (tick == nextBeatTick)
                             {
@@ -224,6 +222,8 @@ namespace Clicker
                                 nextBeatTick = tick + beatTicks;
                                 note = (note + 1) % getNumerator();
                             }
+
+                            sample += samplesPerTick;
                         }
 
                         if (haveKeyOrTempoChange)
