@@ -19,6 +19,7 @@ namespace Clicker
         const int samplesPerSec = 48000;    // samples/sec
 
         const bool forceClickDivision = true;
+        const bool attenuateDividedBeats = true;
         const int clickOnDivision = 3;      // force click on 8th notes at minimum
                                             // 1 / (1 << value) == (1 / (2^value)) == 1/8th (when value is 3)
 
@@ -31,11 +32,29 @@ namespace Clicker
         TempoMessage currentTempo;
         double samplesPerTick;
 
+        private bool isDivided()
+        {
+            return (forceClickDivision && (clickOnDivision >= currentTimeSignature.DenominatorPower));
+        }
+
+        private int divisorPower()
+        {
+            return (clickOnDivision - currentTimeSignature.DenominatorPower);
+        }
+
+        private bool doAttenuateBeat(int beat)
+        {
+            if (!isDivided()) return false;
+            // Chop off the LSBs that may have been introduced for the multiplier:
+            int meterBeat = (beat >> divisorPower()) << divisorPower();
+            return beat != meterBeat;
+        }
+
         // TODO: double the numerator too?
         private void calcBeatTicks()
         {
             int clickDenominator;
-            if (forceClickDivision && (clickOnDivision >= currentTimeSignature.DenominatorPower))
+            if (isDivided())
                 clickDenominator = (1 << clickOnDivision);
             else
                 clickDenominator = currentTimeSignature.Denominator;
@@ -46,8 +65,8 @@ namespace Clicker
         private int getNumerator()
         {
             int num;
-            if (forceClickDivision && (clickOnDivision >= currentTimeSignature.DenominatorPower))
-                num = currentTimeSignature.Numerator << (clickOnDivision - currentTimeSignature.DenominatorPower);
+            if (isDivided())
+                num = currentTimeSignature.Numerator << divisorPower();
             else
                 num = currentTimeSignature.Numerator;
             return num;
@@ -176,6 +195,7 @@ namespace Clicker
                                 //Console.WriteLine("Click at tick {0,7}, sample {1,12:#######0.00}, beat {2,2}", tick, sample, beat);
 
                                 // Copy in a click:
+                                double vol = doAttenuateBeat(beat) ? 0.5d : 1d;
 
                                 // Silence until start of this click:
                                 long x = (long)sample - (long)lastSample;
@@ -194,7 +214,7 @@ namespace Clicker
                                 for (x = -x; x < clickLength; ++x)
                                 {
                                     for (int j = 0; j < format.wChannels; ++j)
-                                        bw.Write(click[x, j]);
+                                        bw.Write((short)(click[x, j] * vol));
                                 }
 
                                 lastSample = sample + clickLength + delta;
