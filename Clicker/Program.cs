@@ -16,10 +16,48 @@ namespace Clicker
             Console.WriteLine("Done!");
         }
 
-        const int samplesPerSec = 48000;   // samples/sec
+        const int samplesPerSec = 48000;    // samples/sec
+
+        const bool forceClickDivision = true;
+        const int clickOnDivision = 3;      // force click on 8th notes at minimum
+                                            // 1 / (1 << value) == (1 / (2^value)) == 1/8th (when value is 3)
+
+        const double samplesPerUsec = (double)samplesPerSec / 1000000d;
+
         int ticksPerQuarter;
         double usecPerTick;
         int beatTicks;
+        TimeSignatureMessage currentTimeSignature;
+        TempoMessage currentTempo;
+        double samplesPerTick;
+
+        // TODO: double the numerator too?
+        private void calcBeatTicks()
+        {
+            int clickDenominator;
+            if (forceClickDivision && (clickOnDivision >= currentTimeSignature.DenominatorPower))
+                clickDenominator = (1 << clickOnDivision);
+            else
+                clickDenominator = currentTimeSignature.Denominator;
+
+            beatTicks = (ticksPerQuarter * 4) / clickDenominator;
+        }
+
+        private int getNumerator()
+        {
+            int num;
+            if (forceClickDivision && (clickOnDivision >= currentTimeSignature.DenominatorPower))
+                num = currentTimeSignature.Numerator << (clickOnDivision - currentTimeSignature.DenominatorPower);
+            else
+                num = currentTimeSignature.Numerator;
+            return num;
+        }
+
+        private void calcUsecPerTick()
+        {
+            usecPerTick = (double)currentTempo.MicrosecondsPerQuarter / (double)ticksPerQuarter;
+            samplesPerTick = usecPerTick * samplesPerUsec;
+        }
 
         private void Run(string[] args)
         {
@@ -68,16 +106,16 @@ namespace Clicker
             // Create a default tempo of 120 bpm (500,000 us/b):
             var tcb = new TempoChangeBuilder() { Tempo = 500000 };
             tcb.Build();
-            TempoMessage currentTempo = new TempoMessage(tcb.Result);
+            currentTempo = new TempoMessage(tcb.Result);
 
             // Create a default time signature of 4/4:
             var tsb = new TimeSignatureBuilder() { Numerator = 4, Denominator = 4 };
             tsb.Build();
-            TimeSignatureMessage currentTimeSignature = new TimeSignatureMessage(tsb.Result);
+            currentTimeSignature = new TimeSignatureMessage(tsb.Result);
 
             ticksPerQuarter = seq.Division;
-            usecPerTick = (double)currentTempo.MicrosecondsPerQuarter / (double)ticksPerQuarter;
-            beatTicks = (ticksPerQuarter * 4) / currentTimeSignature.Denominator;
+            calcUsecPerTick();
+            calcBeatTicks();
 
             double sample = 0d;
 
@@ -93,6 +131,9 @@ namespace Clicker
                 bw.Write(header.sRiffType.ToCharArray());
 
                 var format = new WaveFormatChunk();
+                format.dwSamplesPerSec = samplesPerSec;
+                format.wChannels = 2;
+                format.wBitsPerSample = 16;
 
                 // Write the format chunk
                 bw.Write(format.sChunkID.ToCharArray());
@@ -110,9 +151,6 @@ namespace Clicker
                 bw.Write(data.sChunkID.ToCharArray());
                 bw.Write(data.dwChunkSize);
 
-#if true
-                double samplesPerUsec = (double)samplesPerSec / 1000000d;
-                double samplesPerTick = usecPerTick * samplesPerUsec;
                 double lastSample = sample;
                 int nextBeatTick = 0;
                 int note = 0;
@@ -135,29 +173,28 @@ namespace Clicker
                             if (tick == nextBeatTick)
                             {
                                 int beat = note;
-                                Console.WriteLine("Click at tick {0,7}, sample {1,12:#######0.00}, beat {2,2}", tick, sample, beat);
-                                
+                                //Console.WriteLine("Click at tick {0,7}, sample {1,12:#######0.00}, beat {2,2}", tick, sample, beat);
+
                                 // Copy in a click:
 
                                 // Silence until start of this click:
                                 long x = (long)sample - (long)lastSample;
                                 for (; x > 0; --x)
                                 {
-                                    // STEREO
-                                    bw.Write((short)0);
-                                    bw.Write((short)0);
+                                    for (int j = 0; j < format.wChannels; ++j)
+                                        bw.Write((short)0);
                                 }
 
                                 // Choose the click sound based on the beat:
                                 short[,] click = (beat == 0) ? pinglo : pinghi;
                                 int clickLength = (beat == 0) ? pingloLength : pinghiLength;
 
+                                // Write the portion of the click if we missed the start:
                                 long delta = x;
                                 for (x = -x; x < clickLength; ++x)
                                 {
-                                    // STEREO
-                                    bw.Write(click[x, 0]);
-                                    bw.Write(click[x, 1]);
+                                    for (int j = 0; j < format.wChannels; ++j)
+                                        bw.Write(click[x, j]);
                                 }
 
                                 lastSample = sample + clickLength + delta;
@@ -165,7 +202,7 @@ namespace Clicker
 
                                 // Set next beat tick:
                                 nextBeatTick = tick + beatTicks;
-                                note = (note + 1) % currentTimeSignature.Numerator;
+                                note = (note + 1) % getNumerator();
                             }
                         }
 
@@ -174,14 +211,13 @@ namespace Clicker
                             if (me.mm.MetaType == MetaType.Tempo)
                             {
                                 currentTempo = new TempoMessage(me.mm);
-                                usecPerTick = (double)currentTempo.MicrosecondsPerQuarter / (double)ticksPerQuarter;
-                                samplesPerTick = usecPerTick * samplesPerUsec;
+                                calcUsecPerTick();
                                 Console.WriteLine("{0,-13} {1,7}: {2,7} us/b = {3,6:##0.00} bpm", me.mm.MetaType, me.ev.AbsoluteTicks, currentTempo.MicrosecondsPerQuarter, 500000d / currentTempo.MicrosecondsPerQuarter * 120);
                             }
                             else
                             {
                                 currentTimeSignature = new TimeSignatureMessage(me.mm);
-                                beatTicks = (ticksPerQuarter * 4) / currentTimeSignature.Denominator;
+                                calcBeatTicks();
                                 // NOTE: Assume key change is on a beat tick; force a reset of beats anyway.
                                 nextBeatTick = tick;
                                 note = 0;
@@ -202,62 +238,6 @@ namespace Clicker
                         }
                     }
                 }
-#else
-                int lastTick = 0;
-
-                foreach (var me in timeChanges)
-                {
-                    double delta = usecPerTick * samplesPerUsec * (double)beatTicks;
-                    for (int tick = lastTick, note = 0; tick < me.ev.AbsoluteTicks; tick += beatTicks, ++note)
-                    {
-                        int beat = note % currentTimeSignature.Numerator;
-
-                        sample += delta;
-                        Console.WriteLine("{0,9}: {1}", (long)sample, beat);
-
-                        // Copy in the click:
-                        short[,] click = (beat == 0) ? pinglo : pinghi;
-                        int clickLength = (beat == 0) ? pingloLength : pinghiLength;
-
-                        int d = (int)((long)sample - (long)lastSample);
-                        Debug.Assert(d > 0);
-                        for (int x = 0; x < Math.Min(clickLength, d); ++x)
-                        {
-                            // STEREO
-                            bw.Write(click[x, 0]);
-                            bw.Write(click[x, 1]);
-                        }
-                        for (int x = clickLength; x < d; ++x)
-                        {
-                            // STEREO
-                            bw.Write((short)0);
-                            bw.Write((short)0);
-                        }
-
-                        lastSample = sample;
-
-                        Debug.Assert(Math.Abs((long)sample - wav.Length) <= 2);
-                    }
-
-                    //sample += samplesPerTick(me.ev.AbsoluteTicks - lastTick);
-                    lastTick = me.ev.AbsoluteTicks;
-
-                    if (me.mm == null) continue;
-
-                    if (me.mm.MetaType == MetaType.Tempo)
-                    {
-                        currentTempo = new TempoMessage(me.mm);
-                        usecPerTick = (double)currentTempo.MicrosecondsPerQuarter / (double)ticksPerQuarter;
-                        Console.WriteLine("{0,-13} {1,7}: {2,7} us/b = {3,6:0.00000000} bpm", me.mm.MetaType, me.ev.AbsoluteTicks, currentTempo.MicrosecondsPerQuarter, 500000d / currentTempo.MicrosecondsPerQuarter * 120);
-                    }
-                    else
-                    {
-                        currentTimeSignature = new TimeSignatureMessage(me.mm);
-                        beatTicks = (ticksPerQuarter * 4) / currentTimeSignature.Denominator;
-                        Console.WriteLine("{0,-13} {1,7}: {2}/{3} = {4} ticks/beat", me.mm.MetaType, me.ev.AbsoluteTicks, currentTimeSignature.Numerator, currentTimeSignature.Denominator, beatTicks);
-                    }
-                }
-#endif
 
                 // Write RIFF file size:
                 bw.Seek(4, SeekOrigin.Begin);
@@ -268,11 +248,6 @@ namespace Clicker
                 bw.Seek(0x28, SeekOrigin.Begin);
                 bw.Write(filesize - 0x2C);
             }
-        }
-
-        private long samplesPerTick(int ticks)
-        {
-            return (long)Math.Round(((usecPerTick * (double)samplesPerSec * (double)ticks) / 1000000d), 0, MidpointRounding.AwayFromZero);
         }
 
         private struct TimeSignatureMessage
@@ -288,6 +263,7 @@ namespace Clicker
 
             public int Numerator { get { return (int)msg[0]; } }
             public int Denominator { get { return 1 << msg[1]; } }
+            public int DenominatorPower { get { return (int)msg[1]; } }
 
             // NOTE: I ignore the other two bytes.
 
@@ -339,9 +315,15 @@ namespace Clicker
             public ushort wFormatTag;       // 1 (MS PCM)
             public ushort wChannels;        // Number of channels
             public uint dwSamplesPerSec;    // Frequency of the audio in Hz... 44100
-            public uint dwAvgBytesPerSec;   // for estimating RAM allocation
-            public ushort wBlockAlign;      // sample frame size, in bytes
-            public ushort wBitsPerSample;    // bits per sample
+            public uint dwAvgBytesPerSec    // for estimating RAM allocation
+            {
+                get { return dwSamplesPerSec * wBlockAlign; }
+            }
+            public ushort wBlockAlign       // sample frame size, in bytes
+            {
+                get { return (ushort)(wChannels * (wBitsPerSample / 8)); }
+            }
+            public ushort wBitsPerSample;   // bits per sample
 
             /// <summary>
             /// Initializes a format chunk with the following properties:
@@ -357,8 +339,6 @@ namespace Clicker
                 wChannels = 2;
                 dwSamplesPerSec = 48000;
                 wBitsPerSample = 16;
-                wBlockAlign = (ushort)(wChannels * (wBitsPerSample / 8));
-                dwAvgBytesPerSec = dwSamplesPerSec * wBlockAlign;
             }
         }
 
