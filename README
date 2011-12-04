@@ -1,0 +1,32 @@
+clicker.exe [options ...] <path to MIDI.mid>
+
+Description:
+Clicker generates a WAVE file click track given a MIDI sequence with meter/key
+and tempo change messages. The click track serves as a solid, sample-accurate
+metronome that will line up with the MIDI sequence. You can import the
+generated click track into any MIDI-friendly DAW tool such as SONAR, Cubase,
+etc. to record with. You can even share the click track with other recording
+artists working on your project to serve as a timebase to help synchronize work
+across distances.
+
+Author:     James S. Dunne http://bittwiddlers.org/
+Copyright:  2011, bittwiddlers.org
+Source:     http://github.com/JamesDunne/clicker
+
+Options:
+    -s <samplerate>      Set the output WAVE file's sample rate in Hz
+                         (default 48000 Hz)
+    -c <channels>        Set the output WAVE file's number of channels
+                         (1 or 2, default 2)
+    -d <click division>  Set the metronome to click on each (2^N)th note, 
+                         scaling meter signatures appropriately to match.
+                         (default: off, click on meter beats only)
+    -ao                  Attenuate meter's off-beats if meter is faster
+                         than the metronome. (default: off)
+    -ad                  Attenuate inserted beats if metronome is clicking
+                         faster than the meter. (default: off)
+    <path to MIDI.mid>   Path to the MIDI arrangement to generate the click
+                         track for.
+
+Outputs:
+    <path to MIDI.mid>.click.wav

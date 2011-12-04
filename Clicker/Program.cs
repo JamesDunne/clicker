@@ -121,6 +121,45 @@ namespace Clicker
         /// <param name="args"></param>
         private void Run(string[] args)
         {
+            if (args.Length == 0)
+            {
+                Console.WriteLine(
+@"{0} [options ...] <path to MIDI.mid>
+
+Description:
+Clicker generates a WAVE file click track given a MIDI sequence with meter/key
+and tempo change messages. The click track serves as a solid, sample-accurate
+metronome that will line up with the MIDI sequence. You can import the
+generated click track into any MIDI-friendly DAW tool such as SONAR, Cubase,
+etc. to record with. You can even share the click track with other recording
+artists working on your project to serve as a timebase to help synchronize work
+across distances.
+
+Author:     James S. Dunne http://bittwiddlers.org/
+Copyright:  2011, bittwiddlers.org
+Source:     http://github.com/JamesDunne/clicker
+
+Options:
+    -s <samplerate>      Set the output WAVE file's sample rate in Hz
+                         (default 48000 Hz)
+    -c <channels>        Set the output WAVE file's number of channels
+                         (1 or 2, default 2)
+    -d <click division>  Set the metronome to click on each (2^N)th note, 
+                         scaling meter signatures appropriately to match.
+                         (default: off, click on meter beats only)
+    -ao                  Attenuate meter's off-beats if meter is faster
+                         than the metronome. (default: off)
+    -ad                  Attenuate inserted beats if metronome is clicking
+                         faster than the meter. (default: off)
+    <path to MIDI.mid>   Path to the MIDI arrangement to generate the click
+                         track for.
+
+Outputs:
+    <path to MIDI.mid>.click.wav
+", Process.GetCurrentProcess().ProcessName);
+                return;
+            }
+
             bool early = false;
             Queue<string> aq = new Queue<string>(args);
             while (!early && (aq.Count > 0))
@@ -165,7 +204,11 @@ namespace Clicker
             }
 
             FileInfo midiFile = new FileInfo(aq.Dequeue());
-            if (!midiFile.Exists) return;
+            if (!midiFile.Exists)
+            {
+                Console.WriteLine("Could not find path '{0}'.", midiFile.FullName);
+                return;
+            }
 
             // Load the MIDI sequence:
             Sequence seq = new Sequence(midiFile.FullName);
@@ -298,7 +341,7 @@ namespace Clicker
                                 //Debug.WriteLine("Click at tick {0,7}, sample {1,12:#######0.00}, beat {2,2}", tick, sample, beat);
 
                                 // Copy in a click:
-                                double vol = doAttenuateBeat(beat) ? 0.5d : 1d;
+                                double vol = doAttenuateBeat(beat) ? 0.3d : 1d;
 
                                 // Silence until start of this click:
                                 int x = (int)((long)sample - (long)lastSample);
