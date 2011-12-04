@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Clicker.Multimedia.Midi;
+using System.Collections.Generic;
 
 namespace Clicker
 {
@@ -14,8 +15,10 @@ namespace Clicker
             Debug.WriteLine("Done!");
         }
 
-        const int samplesPerSec = 48000;    // samples/sec
-        const double samplesPerUsec = (double)samplesPerSec / 1000000d;
+        int samplesPerSec = 48000;      // samples/sec
+        int channels = 1;               // mono
+        int bitsPerSample = 16;         // 16-bit samples
+        double samplesPerUsec;
 
         int ticksPerQuarter;
         double usecPerTick;
@@ -27,15 +30,15 @@ namespace Clicker
         /// <summary>
         /// Controls whether or not dividing the meter is acceptable for the metronome
         /// </summary>
-        bool forceClickDivision = true;
+        bool forceClickDivision = false;
         /// <summary>
         /// Controls whether generated beats are attenuated if the meter is divided
         /// </summary>
-        bool attenuateDividedBeats = true;
+        bool attenuateDividedBeats = false;
         /// <summary>
         /// Controls whether meter-proper off-beats are attenuated if they are smaller than the dividing meter threshold
         /// </summary>
-        bool attenuateProperOffBeats = true;
+        bool attenuateProperOffBeats = false;
 
         /// <summary>
         /// (1 &lt;&lt; value) is the minimum desired metronome meter if forceClickDivision is true.
@@ -70,6 +73,7 @@ namespace Clicker
             }
             else
             {
+                if (!attenuateDividedBeats) return false;
                 divisorpwr = divisorPower();
             }
 
@@ -117,14 +121,50 @@ namespace Clicker
         /// <param name="args"></param>
         private void Run(string[] args)
         {
-            // TODO: process arguments to control parameters
-            if (args.Length < 1)
+            bool early = false;
+            Queue<string> aq = new Queue<string>(args);
+            while (!early && (aq.Count > 0))
+            {
+                string arg = aq.Peek();
+
+                switch (arg.ToLower())
+                {
+                    case "-s":
+                        aq.Dequeue();
+                        if (!Int32.TryParse(aq.Dequeue(), out samplesPerSec))
+                            samplesPerSec = 48000;
+                        break;
+                    case "-c":
+                        aq.Dequeue();
+                        if (!Int32.TryParse(aq.Dequeue(), out channels))
+                            channels = 1;
+                        break;
+                    case "-d":
+                        aq.Dequeue();
+                        if (Int32.TryParse(aq.Dequeue(), out clickOnDivision))
+                            forceClickDivision = true;
+                        break;
+                    case "-ao":
+                        aq.Dequeue();
+                        attenuateProperOffBeats = true;
+                        break;
+                    case "-ad":
+                        aq.Dequeue();
+                        attenuateDividedBeats = true;
+                        break;
+                    default:
+                        early = true;
+                        break;
+                }
+            }
+
+            if (aq.Count < 1)
             {
                 Console.WriteLine("Expected path to MIDI sequence.");
                 return;
             }
 
-            FileInfo midiFile = new FileInfo(args[0]);
+            FileInfo midiFile = new FileInfo(aq.Dequeue());
             if (!midiFile.Exists) return;
 
             // Load the MIDI sequence:
@@ -191,13 +231,15 @@ namespace Clicker
 
             double sample = 0d;
 
+            samplesPerUsec = (double)samplesPerSec / 1000000d;
+
             string outWaveFile = Path.Combine(midiFile.Directory.FullName, midiFile.Name + ".click.wav");
             Console.WriteLine("Writing click track to '{0}'", outWaveFile);
 
             var format = new WaveFormatChunk();
-            format.dwSamplesPerSec = samplesPerSec;
-            format.wChannels = 2;
-            format.wBitsPerSample = 16;
+            format.dwSamplesPerSec = (uint)samplesPerSec;
+            format.wChannels = (ushort)channels;
+            format.wBitsPerSample = (ushort)bitsPerSample;
             Console.WriteLine(
                 "Sample rate = {0,6} Hz; Channels = {1,1}; BitsPerSample = {2,2}",
                 format.dwSamplesPerSec,
@@ -259,10 +301,10 @@ namespace Clicker
                                 double vol = doAttenuateBeat(beat) ? 0.5d : 1d;
 
                                 // Silence until start of this click:
-                                long x = (long)sample - (long)lastSample;
+                                int x = (int)((long)sample - (long)lastSample);
                                 for (; x > 0; --x)
                                 {
-                                    for (int j = 0; j < format.wChannels; ++j)
+                                    for (int j = 0; j < channels; ++j)
                                         bw.Write((short)0);
                                 }
 
@@ -271,15 +313,18 @@ namespace Clicker
                                 int clickLength = (beat == 0) ? pingloLength : pinghiLength;
 
                                 // Write the portion of the click if we missed the start:
+                                int samplesWritten = 0;
                                 long delta = x;
-                                for (x = -x; x < clickLength; ++x)
+                                for (x = -x; x < clickLength; ++x, ++samplesWritten)
                                 {
-                                    for (int j = 0; j < format.wChannels; ++j)
-                                        bw.Write((short)(click[x, j] * vol));
+                                    int y = (int)((double)x * 48000d / (double)samplesPerSec);
+                                    if (y >= clickLength) break;
+
+                                    for (int j = 0; j < channels; ++j)
+                                        bw.Write((short)(click[y, j] * vol));
                                 }
 
-                                lastSample = sample + clickLength + delta;
-                                Debug.Assert(Math.Abs((long)lastSample - wav.Length) <= 1);
+                                lastSample = sample + samplesWritten + delta;
 
                                 // Set next beat tick:
                                 nextBeatTick = tick + beatTicks;
